@@ -5,8 +5,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <!-- In your own app, use the package instead (feed: C:\Playground\RelentlessMonitor\packages):
-         <PackageReference Include="RelentlessMonitor.Client" Version="1.0.*" /> -->
-    <ProjectReference Include="..\..\..\src\RelentlessMonitor.Client\RelentlessMonitor.Client.csproj" />
+    <!-- In your own app, use the package instead (feed: C:\Playground\RelentlessEye\packages):
+         <PackageReference Include="RelentlessEye.Client" Version="1.0.*" /> -->
+    <ProjectReference Include="..\..\..\src\RelentlessEye.Client\RelentlessEye.Client.csproj" />
   </ItemGroup>
 </Project>

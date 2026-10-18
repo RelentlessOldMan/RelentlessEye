@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/examples/">
+    <Project Path="examples/csharp/ExampleApp/ExampleApp.csproj" />
+    <Project Path="examples/optional/csharp/OptionalApp/OptionalApp.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/RelentlessEye.Cli/RelentlessEye.Cli.csproj" />
+    <Project Path="src/RelentlessEye.Client/RelentlessEye.Client.csproj" />
+    <Project Path="src/RelentlessEye.Hub/RelentlessEye.Hub.csproj" />
+    <Project Path="src/RelentlessEye.Ui/RelentlessEye.Ui.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RelentlessEye.Tests/RelentlessEye.Tests.csproj" />
+  </Folder>
+</Solution>

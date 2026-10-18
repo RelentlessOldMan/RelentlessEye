@@ -1,4 +1,4 @@
-# RelentlessMonitor wire protocol (v1)
+# RelentlessEye wire protocol (v1)
 
 You only need this if you are writing a client in a language other than C# or Python. The C# and
 Python clients already implement all of it.
@@ -18,7 +18,7 @@ Python clients already implement all of it.
   `"Infinity"` and `"-Infinity"`, and the Python client sends `null`.
 - Every message may carry `"v": 1`. A message with a higher `v` is rejected.
 - Clients connecting from another machine must send the hub's `token` (from
-  `%LOCALAPPDATA%\RelentlessMonitor\hub.json`). Loopback clients don't need one.
+  `%LOCALAPPDATA%\RelentlessEye\hub.json`). Loopback clients don't need one.
 - Liveness:
   - Send `{"type":"ping"}` after 20 s with nothing else to send.
   - A peer that sends nothing for 60 s is considered dead, in both directions.
@@ -77,7 +77,7 @@ The app sends its layout with the hello, or later as `{"type":"layout","layout":
 ```
 
 Widget options: `id`, `kind`, `label`, `span` (grid columns), `color`, `min`, `max`, `unit`,
-`limit`, `states`, `confirm`, `options`.
+`limit`, `states`, `confirm`, `options`, `columns`, `pick`.
 
 | kind | value it shows |
 |---|---|
@@ -92,6 +92,7 @@ Widget options: `id`, `kind`, `label`, `span` (grid columns), `color`, `min`, `m
 | `toggle` | `true`/`false`; flipping sends an action, and the app confirms by setting the value |
 | `choice` | one of `options`, shown highlighted; picking another sends an action with it, and the app confirms by setting the value |
 | `flags` | an array of the `options` that are on; clicking one sends an action with the whole new array, and the app confirms by setting the value |
+| `table` | an array of rows (objects keyed by column), or `{"rows":[…],"picked":"<row id>"}`; with `pick`, clicking a row sends an action with its `id` |
 
 `options` (choice, flags) is a list. Each entry is a string, or an object
 `{"value","label","color","confirm"}` when it needs more:
@@ -104,6 +105,31 @@ Widget options: `id`, `kind`, `label`, `span` (grid columns), `color`, `min`, `m
 
 An option's color is its own `color`, else its entry in `states`, else the widget's `color`. Its
 `confirm` overrides the widget's `confirm`. The monitor never shows a selection the app didn't set.
+
+A `table` lists its `columns` left to right; each is `{"key","label","align","width"}` (only `key`
+is required). `label` defaults to the key, `align` is `left`, `center` or `right`, and `width` is
+in pixels. Columns without a width fit their content; the last one takes the rest. Cells stay on
+one line, and text that doesn't fit ends in "…" with the whole text on hover. A cell is a string,
+a number, or `{"text","color","dot","tip"}`: `"dot":true` draws a colored dot instead of text,
+with `tip` (else `text`) on hover. A missing key is an empty cell.
+
+```json
+{"id":"claims","kind":"table","label":"Claims","pick":true,
+ "columns":[{"key":"owner","label":"Owner"},{"key":"cpu","label":"CPU","align":"center"},
+            {"key":"gpu","label":"GPU","align":"center"},{"key":"what","label":"Doing"}]}
+```
+
+```json
+{"rows":[{"id":"a1","owner":"build","cpu":{"dot":true,"color":"green","tip":"running"},
+          "gpu":{"dot":true,"color":"#555","tip":"not used"},"what":"dotnet test"}],
+ "picked":"a1"}
+```
+
+With `"pick":true` every row needs an `id` (a string, or a number sent back as its JSON text).
+Clicking a row sends an action with that id; clicking the picked row does nothing, and `confirm`
+asks first, as on a button. The highlight is the app's `picked`: the monitor never shows a pick
+the app didn't set. The C# `OnPick` and Python `on_pick` set it for you and keep it when you set the
+rows again as a plain array; set `{"rows"}` without `picked` to clear it. A monitor shows at most 500 rows.
 
 Monitors draw unknown kinds as text. Colors are names (`green`, `red`, `orange`, `ok`, `warn`,
 `error`, …) or hex: `#rgb`, `#argb`, `#rrggbb` or `#aarrggbb`. Anything else falls back to the
@@ -143,19 +169,19 @@ each chart and feed. Because `streams` replaces history, a reconnect never dupli
 - **Target:** `App.name` targets an app by name, or `to` names a key or app.
 - **Delivery:** the hub forwards the request with its own `id` and the sender, stamped by the hub
   (a client can't set these on a request it sends). The app answers with `corr` set to that id.
-  - `role`: `monitor` (a monitor or `rmon`: a person) or `app`.
+  - `role`: `monitor` (a monitor or `reye`: a person) or `app`.
   - `key`: the sender's key, e.g. `monitor:3` or `DEVBOX/CodeCarver`.
-  - `app` and `machine`: what the sender's hello said, e.g. `RelentlessMonitor`.
+  - `app` and `machine`: what the sender's hello said, e.g. `RelentlessEye`.
   - The C# client shows this to handlers as `MonitorClient.Sender`, and the Python client as
     `mon.sender`. Hubs before 1.1 send only `key`.
   - Any process that can reach the hub can connect as a monitor, so `role` tells a person from an app
     that behaves, not from a hostile process. By default only this machine can reach the hub.
 - **Failure:** the requester gets an error response if the app is offline or unknown, disconnects
   before answering, or takes more than 30 s.
-- **Actions:** buttons, toggles, choices and flags arrive at the app as the request `$action` with
+- **Actions:** buttons, toggles, choices, flags and tables arrive at the app as the request `$action` with
   `args: {"widget":"restart","value":…}`: null for a button, a bool for a toggle, an option for a
-  choice, an array of options for flags. The C# `OnChoice`/`OnFlags` and Python `on_choice`/`on_flags`
-  refuse values that aren't options. Reply with any result or an error; the
+  choice, an array of options for flags, a row id for a table. The C# `OnChoice`/`OnFlags`/`OnPick`
+  and Python `on_choice`/`on_flags`/`on_pick` refuse values that aren't options (or rows). Reply with any result or an error; the
   monitor shows it next to the control.
 
 Hub built-ins (target `hub`):

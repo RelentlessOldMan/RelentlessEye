@@ -4,7 +4,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <!-- Deliberately NO reference to RelentlessMonitor.Client: MonitorBridge.cs finds the DLL at runtime
-       (next to the exe, %RELENTLESSMONITOR_CLIENT%, or %LOCALAPPDATA%\RelentlessMonitor\client) and
+  <!-- Deliberately NO reference to RelentlessEye.Client: MonitorBridge.cs finds the DLL at runtime
+       (next to the exe, %RELENTLESSEYE_CLIENT%, or %LOCALAPPDATA%\RelentlessEye\client) and
        does nothing when it isn't there. -->
 </Project>

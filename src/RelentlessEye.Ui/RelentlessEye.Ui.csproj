@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RelentlessEye</AssemblyName>
+    <ApplicationIcon>..\..\assets\RelentlessEye.ico</ApplicationIcon>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RelentlessEye.Client\RelentlessEye.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="..\..\assets\RelentlessEye.ico" Link="RelentlessEye.ico" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RelentlessEye.Tests" />
+  </ItemGroup>
+</Project>

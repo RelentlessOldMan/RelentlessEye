@@ -4,7 +4,7 @@ hub while it runs and the panel catches up. Copy the parts you need.
 
     python examples/python/example_app.py [--hub otherpc:47800] [--token XXXX]
 
-relentless_monitor.py lives in clients/python; copy it next to your own app.
+relentless_eye.py lives in clients/python; copy it next to your own app.
 """
 
 import argparse
@@ -15,7 +15,7 @@ import threading
 import time
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "clients", "python"))
-import relentless_monitor as rm  # noqa: E402
+import relentless_eye as rm  # noqa: E402
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--hub")
@@ -33,6 +33,10 @@ mon = rm.MonitorClient("ExamplePy", rm.layout(
                rm.gauge("queue", "Queue depth", max=50),
                rm.chart("rate", "Items/s", limit=120, min=0)),
     rm.section("Log", rm.feed("log", limit=300), columns=1),
+    rm.section("Workers",
+               rm.table("workers", "Workers (click one to follow it)",
+                        [rm.column("on", "", align="center"), rm.column("name", "Worker"),
+                         rm.column("files", "Files", align="right"), "task"], pick=True), columns=1),
     rm.section("Controls",
                rm.button("restart", "Restart job"),
                rm.button("fail", "Simulate failure", confirm="Make the job fail?", color="red"),
@@ -62,10 +66,17 @@ mon.on_action("fail", lambda _: state.update(fail=True))
 mon.on_toggle("paused", on_pause)
 mon.on_choice("speed", lambda v: mon.log("log", "speed set to %s by %r" % (v, mon.sender)))
 mon.on_flags("verbose", lambda on: mon.log("log", "extra logging: " + (", ".join(on) or "none")))
+mon.on_pick("workers", lambda id: mon.log("log", "following " + id))
 mon.set("speed", "normal")
 mon.set("verbose", [])
 
-# 3. Answer requests from other apps or tools: `rmon request ExamplePy.status`.
+
+def workers(step, stage):
+    color = "orange" if state["paused"] else "green"
+    return [{"id": "w%d" % w, "name": "worker %d" % w, "files": step * 4 * w, "task": "%s batch %d" % (stage, step // 10 + w),
+             "on": {"dot": True, "color": color, "tip": "paused" if state["paused"] else "busy"}} for w in (1, 2, 3)]
+
+# 3. Answer requests from other apps or tools: `reye request ExamplePy.status`.
 mon.provide("status", lambda args: {"paused": state["paused"], "progress": state["pct"], "restarts": state["restarts"]},
             "current job state")
 
@@ -115,6 +126,7 @@ try:
                 "stage": stage,
                 "progress": {"value": step / 100, "text": "%d%% (%s)" % (step, stage)},
                 "counts": {"job": job, "files": step * 12, "restarts": state["restarts"]},
+                "workers": workers(step, stage),
             })
             if step % 20 == 0:
                 mon.log("log", "job %d: %s (%d%%)" % (job, stage, step))

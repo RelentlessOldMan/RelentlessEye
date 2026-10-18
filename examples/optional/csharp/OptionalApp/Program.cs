@@ -1,8 +1,8 @@
-// An app that feeds RelentlessMonitor only if it's installed: no package reference, just
+// An app that feeds RelentlessEye only if it's installed: no package reference, just
 // MonitorBridge.cs copied in. Runs the same with or without the client DLL or a hub.
 //   dotnet run --project examples/optional/csharp/OptionalApp
-// It finds RelentlessMonitor.Client.dll next to the exe, at %RELENTLESSMONITOR_CLIENT%, or in
-// %LOCALAPPDATA%\RelentlessMonitor\client (publish.ps1 -InstallClient puts it there). Without it, it just runs.
+// It finds RelentlessEye.Client.dll next to the exe, at %RELENTLESSEYE_CLIENT%, or in
+// %LOCALAPPDATA%\RelentlessEye\client (publish.ps1 -InstallClient puts it there). Without it, it just runs.
 
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };

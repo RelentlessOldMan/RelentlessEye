@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using RelentlessMonitor;
+using RelentlessEye;
 
 // A pretend worker that shows every widget kind. Run it with or without the hub; start and stop the
 // hub while it runs and the panel catches up. Copy the parts you need.
@@ -24,11 +24,14 @@ await using var mon = new MonitorClient("ExampleApp", l => l
         .Gauge("memory", "Memory", max: 1024, unit: "MB")
         .Chart("cpu", "CPU %", limit: 120, min: 0, max: 100, color: "#3b82f6"))
     .Section("Log", s => s.Feed("log", limit: 300), columns: 1)
+    .Section("Workers", s => s
+        .Table("workers", "Workers (click one to follow it)", [new() { Key = "on", Label = "", Align = "center" },
+            new() { Key = "name", Label = "Worker" }, new() { Key = "files", Label = "Files", Align = "right" }, "task"], pick: true), columns: 1)
     .Section("Controls", s => s
         .Button("restart", "Restart job")
         .Button("fail", "Simulate failure", confirm: "Make the job fail?", color: "red")
         .Toggle("paused", "Paused")
-        .Choice("speed", "Speed", ["slow", "normal", new RelentlessMonitor.Wire.OptionDef { Value = "fast", Color = "orange", Confirm = "Run flat out?" }], span: 2)
+        .Choice("speed", "Speed", ["slow", "normal", new RelentlessEye.Wire.OptionDef { Value = "fast", Color = "orange", Confirm = "Run flat out?" }], span: 2)
         .Flags("verbose", "Log extra", "timings", "memory"), columns: 3),
     new MonitorClientOptions { Hub = hub, Token = token, Instance = Environment.ProcessId.ToString() });
 
@@ -41,10 +44,17 @@ mon.OnAction("fail", () => { failNow = true; });
 mon.OnToggle("paused", on => { paused = on; mon.Log("log", on ? "paused" : "resumed"); });
 mon.OnChoice("speed", v => mon.Log("log", $"speed set to {v} by {MonitorClient.Sender}"));
 mon.OnFlags("verbose", on => mon.Log("log", on.Count == 0 ? "no extra logging" : "extra logging: " + string.Join(", ", on)));
+mon.OnPick("workers", id => mon.Log("log", $"following {id}"));
 mon.Set("speed", "normal");
 mon.Set("verbose", Array.Empty<string>());
+object[] Workers(int step, string stage) => [.. Enumerable.Range(1, 3).Select(w => new
+{
+    id = $"w{w}", name = $"worker {w}", files = step * 4 * w,
+    on = new { dot = true, color = paused ? "orange" : w == 3 && step % 30 < 10 ? "gray" : "green", tip = paused ? "paused" : "busy" },
+    task = $"{stage} batch {step / 10 + w}",
+})];
 
-// 3. Answer requests from other apps or tools: `rmon request ExampleApp.status`.
+// 3. Answer requests from other apps or tools: `reye request ExampleApp.status`.
 double pct = 0;
 mon.Provide("status", _ => new { state = paused ? "paused" : "running", progress = pct, restarts }, "current job state");
 
@@ -90,7 +100,8 @@ while (!stop.IsCancellationRequested)
         pct = step / 100.0;
         var stage = stages[Math.Min(step / 25, stages.Length - 1)];
         mon.Set(("state", "running"), ("stage", stage), ("progress", new { value = pct, text = $"{step}% ({stage})" }),
-            ("counts", new Dictionary<string, object> { ["job"] = job, ["files"] = step * 12, ["restarts"] = restarts }));
+            ("counts", new Dictionary<string, object> { ["job"] = job, ["files"] = step * 12, ["restarts"] = restarts }),
+            ("workers", Workers(step, stage)));
         if (step % 20 == 0) mon.Log("log", $"job {job}: {stage} ({step}%)");
         try { await Task.Delay(150, stop.Token); } catch (OperationCanceledException) { }
     }

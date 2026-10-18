@@ -1,13 +1,13 @@
 """
-monitor_optional.py - copy this one file into your app to feed RelentlessMonitor only if it's there.
+monitor_optional.py - copy this one file into your app to feed RelentlessEye only if it's there.
 
-If relentless_monitor.py can be imported, your app shows up in the monitor. If it can't (or no hub is
+If relentless_eye.py can be imported, your app shows up in the monitor. If it can't (or no hub is
 running), every call does nothing - your app runs exactly the same.
 
-Where it looks for relentless_monitor.py, first match wins:
+Where it looks for relentless_eye.py, first match wins:
   1. your normal import path (e.g. you copied it next to your script)
-  2. %RELENTLESSMONITOR_CLIENT%                  (the folder it's in)
-  3. %LOCALAPPDATA%\\RelentlessMonitor\\client     (publish.ps1 -InstallClient puts it there)
+  2. %RELENTLESSEYE_CLIENT%                  (the folder it's in)
+  3. %LOCALAPPDATA%\\RelentlessEye\\client     (publish.ps1 -InstallClient puts it there)
 
     from monitor_optional import monitor
 
@@ -30,17 +30,17 @@ import sys
 
 def _find():
     try:
-        return importlib.import_module("relentless_monitor"), "import path"
+        return importlib.import_module("relentless_eye"), "import path"
     except ImportError:
         pass
-    folders = [os.environ.get("RELENTLESSMONITOR_CLIENT")]
+    folders = [os.environ.get("RELENTLESSEYE_CLIENT")]
     if os.environ.get("LOCALAPPDATA"):
-        folders.append(os.path.join(os.environ["LOCALAPPDATA"], "RelentlessMonitor", "client"))
+        folders.append(os.path.join(os.environ["LOCALAPPDATA"], "RelentlessEye", "client"))
     for folder in folders:
-        if folder and os.path.isfile(os.path.join(folder, "relentless_monitor.py")):
+        if folder and os.path.isfile(os.path.join(folder, "relentless_eye.py")):
             sys.path.append(folder)
             try:
-                return importlib.import_module("relentless_monitor"), folder
+                return importlib.import_module("relentless_eye"), folder
             except Exception:
                 return None, None
     return None, None
@@ -73,17 +73,17 @@ class _Off:
 
 def monitor(app, layout=None, **options):
     """
-    Returns a MonitorClient (call .start()) if relentless_monitor is available, otherwise a stand-in whose
+    Returns a MonitorClient (call .start()) if relentless_eye is available, otherwise a stand-in whose
     methods do nothing. `options` go to MonitorClient (hub, token, instance, version, ...).
     Check `.enabled` / `.status` to see which you got.
     """
     rm, where = _find()
     if rm is None:
-        return _Off("relentless_monitor.py not found")
+        return _Off("relentless_eye.py not found")
     try:
         client = rm.MonitorClient(app, layout, **options)
     except Exception as e:  # the monitor must never break the app
         return _Off("monitor disabled: %s" % e)
     client.enabled = True
-    client.status = "relentless_monitor from %s" % where
+    client.status = "relentless_eye from %s" % where
     return client

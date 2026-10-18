@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- WinExe: runs in the background with no console window. Pass console output with run-hub.ps1 / dotnet run for debugging. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <AssemblyName>RelentlessEye.Hub</AssemblyName>
+    <ApplicationIcon>..\..\assets\RelentlessEye.ico</ApplicationIcon>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\RelentlessEye.Client\RelentlessEye.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="RelentlessEye.Tests" />
+  </ItemGroup>
+</Project>

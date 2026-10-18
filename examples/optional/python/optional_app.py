@@ -1,6 +1,6 @@
 """
-An app that feeds RelentlessMonitor only if it's installed: just monitor_optional.py copied in.
-Runs the same with or without relentless_monitor.py or a hub.
+An app that feeds RelentlessEye only if it's installed: just monitor_optional.py copied in.
+Runs the same with or without relentless_eye.py or a hub.
 
     python examples/optional/python/optional_app.py
 """

@@ -1,6 +1,6 @@
 name: Auto-close PRs
 
-# RelentlessMonitor is a personal tool published as-is and doesn't accept contributions.
+# RelentlessEye is a personal tool published as-is and doesn't accept contributions.
 # Any pull request is politely closed automatically.
 
 on:
@@ -21,7 +21,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              body: "Thanks for looking! 📟 RelentlessMonitor is a personal tool, published as-is and not accepting contributions — so this PR will auto-close. Please fork it and make it your own."
+              body: "Thanks for looking! 👁️ RelentlessEye is a personal tool, published as-is and not accepting contributions — so this PR will auto-close. Please fork it and make it your own."
             });
             await github.rest.pulls.update({
               owner: context.repo.owner,

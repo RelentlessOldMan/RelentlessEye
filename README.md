@@ -1,30 +1,30 @@
-# RelentlessMonitor 📟
+# RelentlessEye 👁️
 
 **A channel and live monitor for your dev apps: they describe their own panel and push values over TCP JSON lines; C# and Python clients included.**
 
 - Apps connect to a small background **hub** over TCP and describe their own panel: status text,
-  indicators, progress, gauges, charts, log feeds, buttons, toggles, choices and flags.
+  indicators, progress, gauges, charts, log feeds, tables, buttons, toggles, choices and flags.
 - They push values whenever they like, and can answer and send requests.
 - The **monitor** (WPF) draws whatever each app described. It knows nothing about any app.
 - Apps never block and stay silent when no hub is running. Start the hub later and they show up with
   their current state.
 
 ```
- your apps ──TCP 47800──►  RelentlessMonitor.Hub  ◄──  RelentlessMonitor (WPF)
- (C#, Python, anything     (background, keeps state,     rmon (command line)
+ your apps ──TCP 47800──►  RelentlessEye.Hub  ◄──  RelentlessEye (WPF)
+ (C#, Python, anything     (background, keeps state,     reye (command line)
   that writes JSON lines)   routes requests)
 ```
 
 ## Running it
 
 ```powershell
-.\publish.ps1                    # hub, monitor and rmon into .\dist (client files in dist\client)
-dist\RelentlessMonitor.Hub.exe   # background hub; --console to watch its log
-dist\RelentlessMonitor.exe       # the monitor
-dist\rmon.exe apps               # what's connected
+.\publish.ps1                    # hub, monitor and reye into .\dist (client files in dist\client)
+dist\RelentlessEye.Hub.exe       # background hub; --console to watch its log
+dist\RelentlessEye.exe           # the monitor
+dist\reye.exe apps               # what's connected
 ```
 
-**Hub settings** are in `%LOCALAPPDATA%\RelentlessMonitor\hub.json`:
+**Hub settings** are in `%LOCALAPPDATA%\RelentlessEye\hub.json`:
 
 - `port` (default 47800).
 - `bind`: `localhost` by default, or `all` for other machines.
@@ -33,17 +33,17 @@ dist\rmon.exe apps               # what's connected
 - Flags `--port`, `--bind`, `--config` override the file.
 
 **Remote apps and monitors** use `--hub host[:port]` and `--token …`, or the environment variables
-`RELENTLESSMONITOR_HUB` and `RELENTLESSMONITOR_TOKEN`. In the monitor, use *Hub settings*.
+`RELENTLESSEYE_HUB` and `RELENTLESSEYE_TOKEN`. In the monitor, click the hub line at the top.
 
 ## Feeding it from C#
 
 ```powershell
-.\pack.ps1      # builds packages\RelentlessMonitor.Client.<ver>.nupkg (this repo's local feed)
-dotnet add package RelentlessMonitor.Client -s C:\Playground\RelentlessMonitor\packages
+.\pack.ps1      # builds packages\RelentlessEye.Client.<ver>.nupkg (this repo's local feed)
+dotnet add package RelentlessEye.Client -s C:\Playground\RelentlessEye\packages
 ```
 
 ```csharp
-using RelentlessMonitor;
+using RelentlessEye;
 
 await using var mon = MonitorClient.Start("CodeCarver", l => l
     .Section("Job", s => s
@@ -53,7 +53,7 @@ await using var mon = MonitorClient.Start("CodeCarver", l => l
     .Section("Controls", s => s.Button("cancel", "Cancel", confirm: "Cancel the run?")));
 
 mon.OnAction("cancel", () => cts.Cancel());
-mon.Provide("status", _ => new { stage, done });          // rmon request CodeCarver.status
+mon.Provide("status", _ => new { stage, done });          // reye request CodeCarver.status
 
 mon.Set("state", "running");
 mon.Set("progress", new { value = 0.4, text = "40% (parsing)" });
@@ -66,10 +66,10 @@ var lease = await mon.RequestAsync("ComputeWarden.status"); // ask another app
 
 ## Feeding it from Python
 
-Copy `clients/python/relentless_monitor.py` (stdlib only) next to your script.
+Copy `clients/python/relentless_eye.py` (stdlib only) next to your script.
 
 ```python
-import relentless_monitor as rm
+import relentless_eye as rm
 
 mon = rm.MonitorClient("CodeSpawner", rm.layout(
     rm.section("Job", rm.indicator("state", "State", states={"running": "green"}),
@@ -95,17 +95,17 @@ An app can feed the monitor when it's installed and run exactly the same when it
 package reference and no import that can fail. `examples/optional` shows how:
 
 - **C#:** copy `examples/optional/csharp/OptionalApp/MonitorBridge.cs` into your app. It loads
-  `RelentlessMonitor.Client.dll` by reflection from:
+  `RelentlessEye.Client.dll` by reflection from:
   - next to your exe;
-  - `%RELENTLESSMONITOR_CLIENT%` (the DLL or its folder);
-  - `%LOCALAPPDATA%\RelentlessMonitor\client`.
+  - `%RELENTLESSEYE_CLIENT%` (the DLL or its folder);
+  - `%LOCALAPPDATA%\RelentlessEye\client`.
 
   If the DLL isn't found, every call does nothing.
-- **Python:** copy `examples/optional/python/monitor_optional.py`. It imports `relentless_monitor`
-  from the import path, from `%RELENTLESSMONITOR_CLIENT%`, or from
-  `%LOCALAPPDATA%\RelentlessMonitor\client`. If it isn't found, you get a stub that does nothing.
+- **Python:** copy `examples/optional/python/monitor_optional.py`. It imports `relentless_eye`
+  from the import path, from `%RELENTLESSEYE_CLIENT%`, or from
+  `%LOCALAPPDATA%\RelentlessEye\client`. If it isn't found, you get a stub that does nothing.
 
-`.\publish.ps1 -InstallClient` copies both client files to `%LOCALAPPDATA%\RelentlessMonitor\client`,
+`.\publish.ps1 -InstallClient` copies both client files to `%LOCALAPPDATA%\RelentlessEye\client`,
 so every optional app on the machine finds them. Each bridge's `status` says what it found.
 
 ## Other languages
@@ -113,10 +113,10 @@ so every optional app on the machine finds them. Each bridge's `status` says wha
 Anything that can open a socket and write JSON lines can feed the hub. See
 [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
-## rmon
+## reye
 
 ```
-rmon info | apps | app KEY | watch [APP] | request NAME [JSON] | action KEY WIDGET [JSON] | forget KEY | stop
+reye info | apps | app KEY | watch [APP] | request NAME [JSON] | action KEY WIDGET [JSON] | forget KEY | stop
      [--hub host:port] [--token X] [--to KEY]
 ```
 
@@ -124,10 +124,10 @@ rmon info | apps | app KEY | watch [APP] | request NAME [JSON] | action KEY WIDG
 
 | path | what |
 |---|---|
-| `src/RelentlessMonitor.Client` | C# client, NuGet package `RelentlessMonitor.Client` (net8) |
-| `src/RelentlessMonitor.Hub` | the hub |
-| `src/RelentlessMonitor.Ui` | the WPF monitor (`RelentlessMonitor.exe`) |
-| `src/RelentlessMonitor.Cli` | `rmon` |
+| `src/RelentlessEye.Client` | C# client, NuGet package `RelentlessEye.Client` (net8) |
+| `src/RelentlessEye.Hub` | the hub |
+| `src/RelentlessEye.Ui` | the WPF monitor (`RelentlessEye.exe`) |
+| `src/RelentlessEye.Cli` | `reye` |
 | `clients/python` | single-file Python client |
 | `examples` | ready-to-run C# and Python apps; `examples/optional` feeds the monitor only if it's installed |
 | `tests` | end-to-end, router, protocol, Python client, and off-screen UI panel tests |
@@ -135,7 +135,7 @@ rmon info | apps | app KEY | watch [APP] | request NAME [JSON] | action KEY WIDG
 
 ## Contributing
 
-This is a personal tool, published as-is — **issues and pull requests aren't accepted** (PRs auto-close). Fork it and make it your own. 📟
+This is a personal tool, published as-is — **issues and pull requests aren't accepted** (PRs auto-close). Fork it and make it your own. 👁️
 
 ## License
 

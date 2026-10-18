@@ -1,14 +1,14 @@
-// MonitorBridge.cs — copy this one file into your app to feed RelentlessMonitor WITHOUT referencing it.
+// MonitorBridge.cs — copy this one file into your app to feed RelentlessEye WITHOUT referencing it.
 //
-// If RelentlessMonitor.Client.dll can be found at runtime, your app shows up in the monitor. If it
+// If RelentlessEye.Client.dll can be found at runtime, your app shows up in the monitor. If it
 // can't (or the hub isn't running), every call here does nothing — your app builds, ships and runs
 // exactly the same. Needs net8 or later; no package reference, no other files.
 //
 // Where it looks for the DLL, first match wins:
-//   1. already loaded (your app references the RelentlessMonitor.Client package after all)
-//   2. %RELENTLESSMONITOR_CLIENT%          (the DLL itself, or the folder it's in)
+//   1. already loaded (your app references the RelentlessEye.Client package after all)
+//   2. %RELENTLESSEYE_CLIENT%          (the DLL itself, or the folder it's in)
 //   3. next to your app                    (AppContext.BaseDirectory)
-//   4. %LOCALAPPDATA%\RelentlessMonitor\client   (publish.ps1 -InstallClient puts it there)
+//   4. %LOCALAPPDATA%\RelentlessEye\client   (publish.ps1 -InstallClient puts it there)
 //
 // Usage:
 //   using var monitor = MonitorBridge.Create("MyApp", new
@@ -32,10 +32,10 @@ using System.Reflection;
 using System.Runtime.Loader;
 using System.Text.Json;
 
-/// <summary>Optional RelentlessMonitor feed. Every member is safe to call whether or not the monitor exists.</summary>
+/// <summary>Optional RelentlessEye feed. Every member is safe to call whether or not the monitor exists.</summary>
 public sealed class MonitorBridge : IDisposable
 {
-    private const string AssemblyName = "RelentlessMonitor.Client";
+    private const string AssemblyName = "RelentlessEye.Client";
 
     private readonly object? _client;
     private readonly Type? _type;
@@ -50,7 +50,7 @@ public sealed class MonitorBridge : IDisposable
     /// <summary>True when the client DLL was found and the client created (the hub may still be down).</summary>
     public bool Enabled => _client is not null;
 
-    /// <summary>What happened at start, e.g. "client 1.0.0 from C:\…" or "RelentlessMonitor.Client.dll not found".</summary>
+    /// <summary>What happened at start, e.g. "client 1.0.0 from C:\…" or "RelentlessEye.Client.dll not found".</summary>
     public string Status { get; }
 
     /// <summary>True while connected to a hub.</summary>
@@ -67,14 +67,10 @@ public sealed class MonitorBridge : IDisposable
             var asm = FindClient(out var where);
             if (asm is null) return new(null, null, $"{AssemblyName}.dll not found");
 
-            var clientType = asm.GetType("RelentlessMonitor.MonitorClient", throwOnError: true)!;
-            var layoutType = asm.GetType("RelentlessMonitor.Wire.LayoutDef", throwOnError: true)!;
-            var optionsType = asm.GetType("RelentlessMonitor.MonitorClientOptions", throwOnError: true)!;
-            var json = (JsonSerializerOptions)asm.GetType("RelentlessMonitor.Wire.Protocol", throwOnError: true)!
-                .GetField("Json")!.GetValue(null)!;
+            var clientType = asm.GetType("RelentlessEye.MonitorClient", throwOnError: true)!;
+            var optionsType = asm.GetType("RelentlessEye.MonitorClientOptions", throwOnError: true)!;
 
-            var layoutJson = layout as string ?? JsonSerializer.Serialize(layout, json);
-            var layoutDef = JsonSerializer.Deserialize(layoutJson, layoutType, json);
+            var layoutDef = ToLayout(asm, layout);
 
             var options = Activator.CreateInstance(optionsType)!;
             void Opt(string name, string? value) { if (value is not null) optionsType.GetProperty(name)?.SetValue(options, value); }
@@ -90,6 +86,32 @@ public sealed class MonitorBridge : IDisposable
             return new(null, null, $"monitor disabled: {Unwrap(e).Message}");
         }
     }
+
+    /// <summary>The client's LayoutDef from any layout-shaped object or JSON string.</summary>
+    private static object? ToLayout(Assembly asm, object layout)
+    {
+        var layoutType = asm.GetType("RelentlessEye.Wire.LayoutDef", throwOnError: true)!;
+        var json = (JsonSerializerOptions)asm.GetType("RelentlessEye.Wire.Protocol", throwOnError: true)!.GetField("Json")!.GetValue(null)!;
+        return JsonSerializer.Deserialize(layout as string ?? JsonSerializer.Serialize(layout, json), layoutType, json);
+    }
+
+    /// <summary>
+    /// Replaces the panel's layout (same shapes as <see cref="Create"/>); monitors redraw, and values of widgets that
+    /// stay are kept.
+    /// </summary>
+    public void SetLayout(object layout)
+    {
+        if (_client is null) return;
+        Try(() =>
+        {
+            var def = ToLayout(_type!.Assembly, layout);
+            _type.GetMethod("SetLayout", [def!.GetType()])!.Invoke(_client, [def]);
+            return true;
+        }, false);
+    }
+
+    /// <summary>Runs when a row of a table with <c>pick</c> is clicked, with the row's id; the table then shows it picked. Needs client 1.2 or later.</summary>
+    public void OnPick(string widgetId, Action<string> handler) => Call("OnPick", [typeof(string), typeof(Action<string>)], widgetId, handler);
 
     /// <summary>Starts looking for the hub in the background. Returns immediately.</summary>
     public void Start() => Call("Start", Type.EmptyTypes);
@@ -129,7 +151,7 @@ public sealed class MonitorBridge : IDisposable
         return new MonitorSender(P("Key") ?? "", P("Role"), P("App"), P("Machine"));
     }, null);
 
-    /// <summary>Answers requests from other apps and tools (<c>rmon request MyApp.name</c>).</summary>
+    /// <summary>Answers requests from other apps and tools (<c>reye request MyApp.name</c>).</summary>
     public void Provide(string name, Func<JsonElement?, object?> handler, string? description = null)
         => Call("Provide", [typeof(string), typeof(Func<JsonElement?, object?>), typeof(string)], name, handler, description);
 
@@ -173,10 +195,10 @@ public sealed class MonitorBridge : IDisposable
     private static IEnumerable<string> Candidates()
     {
         var file = AssemblyName + ".dll";
-        if (Environment.GetEnvironmentVariable("RELENTLESSMONITOR_CLIENT") is { Length: > 0 } env)
+        if (Environment.GetEnvironmentVariable("RELENTLESSEYE_CLIENT") is { Length: > 0 } env)
             yield return env.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) ? env : Path.Combine(env, file);
         yield return Path.Combine(AppContext.BaseDirectory, file);
-        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelentlessMonitor", "client", file);
+        yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelentlessEye", "client", file);
     }
 }
 
