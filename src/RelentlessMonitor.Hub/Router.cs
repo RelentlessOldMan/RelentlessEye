@@ -45,6 +45,7 @@ internal sealed class Router
     private readonly Dictionary<string, AppEntry> _apps = new(StringComparer.Ordinal);
     private readonly Dictionary<int, string> _peerApp = []; // peer id → app key
     private readonly Dictionary<int, IPeer> _monitors = [];
+    private readonly Dictionary<int, (string? App, string? Machine)> _monitorNames = []; // peer id → what its hello said
     private readonly Dictionary<string, Pending> _pending = new(StringComparer.Ordinal);
     private readonly HubConfig _config;
     private readonly HubLog _log;
@@ -82,6 +83,7 @@ internal sealed class Router
             if (hello.Role == Roles.Monitor)
             {
                 _monitors[peer.Id] = peer;
+                _monitorNames[peer.Id] = (hello.App, hello.Machine);
                 peer.Send(new Message { Type = MessageTypes.Welcome, Key = $"monitor:{peer.Id}", Text = Banner() });
                 foreach (var e in _apps.Values) peer.Send(new Message { Type = MessageTypes.AppState, State = e.State });
                 _log.Info($"monitor {hello.App} connected from {peer.Remote}");
@@ -182,6 +184,7 @@ internal sealed class Router
         lock (_lock)
         {
             _monitors.Remove(peer.Id);
+            _monitorNames.Remove(peer.Id);
             foreach (var (id, p) in _pending.ToList())
             {
                 if (p.Target.Id == peer.Id)
@@ -246,11 +249,15 @@ internal sealed class Router
         }
         var id = Protocol.NewId();
         _pending[id] = new Pending { Origin = from, OriginId = req.Id, Target = target.Peer, Deadline = DateTime.UtcNow + RequestTimeout };
-        target.Peer.Send(new Message
-        {
-            Type = MessageTypes.Request, Id = id, Name = name, Args = req.Args,
-            Key = _peerApp.TryGetValue(from.Id, out var k) ? k : $"monitor:{from.Id}",
-        });
+        // Stamped by the hub, so the app can tell a monitor (a person at a panel) from another app.
+        var fwd = new Message { Type = MessageTypes.Request, Id = id, Name = name, Args = req.Args };
+        if (_peerApp.TryGetValue(from.Id, out var k) && _apps.TryGetValue(k, out var sender))
+            (fwd.Key, fwd.Role, fwd.App, fwd.Machine) = (k, Roles.App, sender.State.App, sender.State.Machine);
+        else if (_monitorNames.TryGetValue(from.Id, out var m))
+            (fwd.Key, fwd.Role, fwd.App, fwd.Machine) = ($"monitor:{from.Id}", Roles.Monitor, m.App, m.Machine);
+        else
+            fwd.Key = $"peer:{from.Id}";
+        target.Peer.Send(fwd);
     }
 
     /// <summary>Exact key, else the first connected (then any) app with that name.</summary>

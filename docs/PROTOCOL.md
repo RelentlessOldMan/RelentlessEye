@@ -77,7 +77,7 @@ The app sends its layout with the hello, or later as `{"type":"layout","layout":
 ```
 
 Widget options: `id`, `kind`, `label`, `span` (grid columns), `color`, `min`, `max`, `unit`,
-`limit`, `states`, `confirm`.
+`limit`, `states`, `confirm`, `options`.
 
 | kind | value it shows |
 |---|---|
@@ -90,6 +90,20 @@ Widget options: `id`, `kind`, `label`, `span` (grid columns), `color`, `min`, `m
 | `feed` | **stream** of lines: strings or `{"text","level","ts"}` (`level`: info/warn/error/debug); last `limit` kept (default 200) |
 | `button` | optional `{"enabled":false,"label":"…"}`; clicking sends an action |
 | `toggle` | `true`/`false`; flipping sends an action, and the app confirms by setting the value |
+| `choice` | one of `options`, shown highlighted; picking another sends an action with it, and the app confirms by setting the value |
+| `flags` | an array of the `options` that are on; clicking one sends an action with the whole new array, and the app confirms by setting the value |
+
+`options` (choice, flags) is a list. Each entry is a string, or an object
+`{"value","label","color","confirm"}` when it needs more:
+
+```json
+{"id":"mode","kind":"choice","label":"Mode","states":{"auto":"green","steady":"orange"},
+ "options":["auto","steady",{"value":"hold","label":"Hold","color":"red","confirm":"Hold everything?"}]}
+{"id":"res","kind":"flags","label":"Resources","options":["cpu","gpu","ram","network","disk"]}
+```
+
+An option's color is its own `color`, else its entry in `states`, else the widget's `color`. Its
+`confirm` overrides the widget's `confirm`. The monitor never shows a selection the app didn't set.
 
 Monitors draw unknown kinds as text. Colors are names (`green`, `red`, `orange`, `ok`, `warn`,
 `error`, …) or hex: `#rgb`, `#argb`, `#rrggbb` or `#aarrggbb`. Anything else falls back to the
@@ -127,12 +141,21 @@ each chart and feed. Because `streams` replaces history, a reconnect never dupli
 ```
 
 - **Target:** `App.name` targets an app by name, or `to` names a key or app.
-- **Delivery:** the hub forwards the request with its own `id` and a `key` naming the sender. The app
-  answers with `corr` set to that id.
+- **Delivery:** the hub forwards the request with its own `id` and the sender, stamped by the hub
+  (a client can't set these on a request it sends). The app answers with `corr` set to that id.
+  - `role`: `monitor` (a monitor or `rmon`: a person) or `app`.
+  - `key`: the sender's key, e.g. `monitor:3` or `DEVBOX/CodeCarver`.
+  - `app` and `machine`: what the sender's hello said, e.g. `RelentlessMonitor`.
+  - The C# client shows this to handlers as `MonitorClient.Sender`, and the Python client as
+    `mon.sender`. Hubs before 1.1 send only `key`.
+  - Any process that can reach the hub can connect as a monitor, so `role` tells a person from an app
+    that behaves, not from a hostile process. By default only this machine can reach the hub.
 - **Failure:** the requester gets an error response if the app is offline or unknown, disconnects
   before answering, or takes more than 30 s.
-- **Actions:** buttons and toggles arrive at the app as the request `$action` with
-  `args: {"widget":"restart","value":null|true|false}`. Reply with any result or an error; the
+- **Actions:** buttons, toggles, choices and flags arrive at the app as the request `$action` with
+  `args: {"widget":"restart","value":…}`: null for a button, a bool for a toggle, an option for a
+  choice, an array of options for flags. The C# `OnChoice`/`OnFlags` and Python `on_choice`/`on_flags`
+  refuse values that aren't options. Reply with any result or an error; the
   monitor shows it next to the control.
 
 Hub built-ins (target `hub`):

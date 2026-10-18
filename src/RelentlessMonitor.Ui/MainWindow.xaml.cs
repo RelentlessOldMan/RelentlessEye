@@ -49,16 +49,24 @@ public partial class MainWindow : Window
         InitializeComponent();
         _settings = MonitorSettings.Load(_settingsPath);
         ApplyCommandLine();
+        // 1180x760 was the default before 1.1 and got saved whether or not anyone chose it: treat it as unset.
+        if (_settings is { Width: 1180, Height: 760 }) _settings.Width = _settings.Height = null;
         if (_settings.Width is > 300) Width = _settings.Width.Value;
         if (_settings.Height is > 200) Height = _settings.Height.Value;
+        // Never open bigger than the screen.
+        var work = SystemParameters.WorkArea;
+        Width = Math.Min(Width, work.Width);
+        Height = Math.Min(Height, work.Height);
+        var (startWidth, startHeight) = (Width, Height);
 
         _drain = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => Drain(), Dispatcher);
         _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => UpdateHeader(), Dispatcher);
         Loaded += (_, _) => { Connect(); _drain.Start(); _clock.Start(); };
         Closing += async (_, _) =>
         {
-            _settings.Width = ActualWidth;
-            _settings.Height = ActualHeight;
+            // Only a size someone chose is saved, so a better default reaches everyone who never resized.
+            bool resized = Math.Abs(ActualWidth - startWidth) > 1 || Math.Abs(ActualHeight - startHeight) > 1;
+            if (resized || _settings.Width is not null) (_settings.Width, _settings.Height) = (ActualWidth, ActualHeight);
             _settings.Save(_settingsPath);
             if (_viewer is { } v) { _viewer = null; await v.DisposeAsync(); }
         };

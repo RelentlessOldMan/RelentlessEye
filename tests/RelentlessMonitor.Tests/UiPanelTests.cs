@@ -140,6 +140,61 @@ public class UiPanelTests
     });
 
     [Fact]
+    public Task Choice_and_flags_show_the_app_value_and_send_the_wanted_one() => Sta.Run(async () =>
+    {
+        var confirms = new List<string>();
+        bool answer = false;
+        var oldConfirm = WidgetView.Confirm;
+        WidgetView.Confirm = (_, text, _) => { confirms.Add(text); return answer; }; // never a real dialog
+        try
+        {
+            var sent = new List<(string Widget, object? Value)>();
+            var panel = new AppPanel("PC/App", (w, v) => { sent.Add((w, v)); return Task.FromResult(new HubResponse(false, null, "app said no")); });
+            var layout = new LayoutBuilder().Section("Mode", s => s
+                .Choice("mode", "Mode", ["auto", new OptionDef { Value = "hold", Label = "Hold", Confirm = "Hold all?" }])
+                .Flags("res", "Res", "cpu", "gpu", "ram")).Build();
+            var state = new AppState { Key = "PC/App", App = "App", Connected = true, Layout = layout };
+            state.Values["mode"] = J("\"auto\"");
+            state.Values["res"] = J("""["gpu"]""");
+            panel.Render(state);
+            Button B(string text) => Find<Button>(panel).Single(b => (string)b.Content == text);
+            void Click(string text) => B(text).RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+
+            Assert.Equal(FontWeights.SemiBold, B("auto").FontWeight);
+            Assert.Equal(FontWeights.Normal, B("Hold").FontWeight);
+            Assert.Equal(FontWeights.SemiBold, B("gpu").FontWeight);
+
+            Click("auto"); // already chosen: nothing to send
+            Click("Hold"); // confirm says no
+            Assert.Equal(["Hold all?"], confirms);
+            Assert.Empty(sent);
+
+            answer = true;
+            Click("Hold");
+            await Pump();
+            Assert.Equal(("mode", (object?)"hold"), sent.Single());
+            Assert.Equal(FontWeights.Normal, B("Hold").FontWeight); // the app said no: still shows auto
+            Assert.Contains("app said no", Texts(panel));
+
+            Click("cpu");
+            await Pump();
+            Assert.Equal("res", sent[^1].Widget);
+            Assert.Equal(["cpu", "gpu"], (string[])sent[^1].Value!);
+            Click("gpu");
+            await Pump();
+            Assert.Empty((string[])sent[^1].Value!);
+
+            state.Values["mode"] = J("\"hold\"");
+            panel.Render(state);
+            Assert.Equal(FontWeights.SemiBold, B("Hold").FontWeight);
+
+            panel.Render(new AppState { Key = "PC/App", App = "App", Connected = false, Layout = layout, Values = state.Values });
+            Assert.All(Find<Button>(panel), b => Assert.False(b.IsEnabled));
+        }
+        finally { WidgetView.Confirm = oldConfirm; }
+    });
+
+    [Fact]
     public Task New_layout_rebuilds_and_same_layout_keeps_controls() => Sta.Run(async () =>
     {
         var panel = new AppPanel("PC/App", (_, _) => Task.FromResult(new HubResponse(true, null, null)));

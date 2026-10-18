@@ -110,6 +110,25 @@ public sealed class MonitorBridge : IDisposable
     /// <summary>Runs when a toggle is flipped; the toggle then shows the new value.</summary>
     public void OnToggle(string widgetId, Action<bool> handler) => Call("OnToggle", [typeof(string), typeof(Action<bool>)], widgetId, handler);
 
+    /// <summary>Runs when an option of a choice is picked; the choice then shows it. Needs client 1.1 or later.</summary>
+    public void OnChoice(string widgetId, Action<string> handler) => Call("OnChoice", [typeof(string), typeof(Action<string>)], widgetId, handler);
+
+    /// <summary>Runs with every option of a flags widget that should now be on; the flags then show that. Needs client 1.1 or later.</summary>
+    public void OnFlags(string widgetId, Action<IReadOnlyList<string>> handler)
+        => Call("OnFlags", [typeof(string), typeof(Action<IReadOnlyList<string>>)], widgetId, handler);
+
+    /// <summary>
+    /// Inside a handler: who sent the request, as the hub stamped it. Null outside a handler, with no client, or with a
+    /// client older than 1.1. <see cref="MonitorSender.IsMonitor"/> tells a person at a panel from another app.
+    /// </summary>
+    public MonitorSender? Sender => _client is null ? null : Try(() =>
+    {
+        var s = _type!.GetProperty("Sender", BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy)?.GetValue(null);
+        if (s is null) return null;
+        string? P(string name) => s.GetType().GetProperty(name)?.GetValue(s) as string;
+        return new MonitorSender(P("Key") ?? "", P("Role"), P("App"), P("Machine"));
+    }, null);
+
     /// <summary>Answers requests from other apps and tools (<c>rmon request MyApp.name</c>).</summary>
     public void Provide(string name, Func<JsonElement?, object?> handler, string? description = null)
         => Call("Provide", [typeof(string), typeof(Func<JsonElement?, object?>), typeof(string)], name, handler, description);
@@ -159,4 +178,11 @@ public sealed class MonitorBridge : IDisposable
         yield return Path.Combine(AppContext.BaseDirectory, file);
         yield return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RelentlessMonitor", "client", file);
     }
+}
+
+/// <summary>Who sent a request: <c>Key</c> like <c>monitor:3</c> or <c>PC/OtherApp</c>; <c>Role</c> <c>monitor</c> or <c>app</c>.</summary>
+public sealed record MonitorSender(string Key, string? Role, string? App, string? Machine)
+{
+    public bool IsMonitor => Role == "monitor";
+    public override string ToString() => App is null ? Key : $"{App} ({Key})";
 }

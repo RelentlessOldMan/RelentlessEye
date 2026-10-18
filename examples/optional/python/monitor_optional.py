@@ -50,6 +50,7 @@ class _Off:
     """Stands in for MonitorClient when the monitor isn't installed: every call does nothing."""
     connected = False
     enabled = False
+    sender = None
 
     def __init__(self, status):
         self.status = status

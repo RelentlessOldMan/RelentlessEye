@@ -3,7 +3,7 @@
 **A channel and live monitor for your dev apps: they describe their own panel and push values over TCP JSON lines; C# and Python clients included.**
 
 - Apps connect to a small background **hub** over TCP and describe their own panel: status text,
-  indicators, progress, gauges, charts, log feeds, buttons, toggles.
+  indicators, progress, gauges, charts, log feeds, buttons, toggles, choices and flags.
 - They push values whenever they like, and can answer and send requests.
 - The **monitor** (WPF) draws whatever each app described. It knows nothing about any app.
 - Apps never block and stay silent when no hub is running. Start the hub later and they show up with

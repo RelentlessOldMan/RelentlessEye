@@ -36,11 +36,13 @@ mon = rm.MonitorClient("ExamplePy", rm.layout(
     rm.section("Controls",
                rm.button("restart", "Restart job"),
                rm.button("fail", "Simulate failure", confirm="Make the job fail?", color="red"),
-               rm.toggle("paused", "Paused"), columns=3),
+               rm.toggle("paused", "Paused"),
+               rm.choice("speed", "Speed", ["slow", "normal", rm.option("fast", color="orange", confirm="Run flat out?")], span=2),
+               rm.flags("verbose", "Log extra", ["timings", "memory"]), columns=3),
     title="Example (Python)"),
     hub=opts.hub, token=opts.token, instance=str(os.getpid()), version="1.0")
 
-# 2. Handle the panel's buttons and toggles.
+# 2. Handle the panel's buttons, toggles, choices and flags.
 state = {"paused": False, "restart": False, "fail": False, "restarts": 0, "pct": 0.0}
 
 
@@ -58,6 +60,10 @@ def on_pause(on):
 mon.on_action("restart", on_restart)
 mon.on_action("fail", lambda _: state.update(fail=True))
 mon.on_toggle("paused", on_pause)
+mon.on_choice("speed", lambda v: mon.log("log", "speed set to %s by %r" % (v, mon.sender)))
+mon.on_flags("verbose", lambda on: mon.log("log", "extra logging: " + (", ".join(on) or "none")))
+mon.set("speed", "normal")
+mon.set("verbose", [])
 
 # 3. Answer requests from other apps or tools: `rmon request ExamplePy.status`.
 mon.provide("status", lambda args: {"paused": state["paused"], "progress": state["pct"], "restarts": state["restarts"]},

@@ -21,11 +21,17 @@ public class PythonClientTests
         sys.path.insert(0, sys.argv[1])
         import relentless_monitor as rm
         mon = rm.MonitorClient("PyTest", rm.layout(rm.section("S",
-            rm.text("stage"), rm.chart("c", limit=3), rm.button("go", "Go"), rm.toggle("t", "T"))),
+            rm.text("stage"), rm.chart("c", limit=3), rm.button("go", "Go"), rm.toggle("t", "T"),
+            rm.choice("mode", "Mode", ["auto", rm.option("hold", "Hold", color="red", confirm="Sure?")]),
+            rm.flags("res", "Res", ["cpu", "gpu", "ram"]))),
             hub=sys.argv[2], machine="TESTPC", retry_interval=0.2)
         clicks = []
         mon.on_action("go", lambda v: clicks.append(1) or len(clicks))
         mon.on_toggle("t", lambda on: None)
+        senders = []
+        mon.on_choice("mode", lambda v: senders.append(mon.sender))
+        mon.on_flags("res", lambda on: None)
+        mon.provide("who", lambda args: [repr(mon.sender), mon.sender.role, mon.sender.is_monitor, senders[-1].app if senders else None])
         mon.provide("echo", lambda args: {"got": args})
         mon.set("stage", "before")
         for i in range(5): mon.set("c", i)
@@ -144,6 +150,20 @@ public class PythonClientTests
             r = await viewer.ActionAsync(s.Key, "t", true);
             Assert.True(r.Ok, r.Error);
             await Wait.Until(() => viewer.Apps.Single(a => a.App == "PyTest").Values.TryGetValue("t", out var v) && v.ValueKind == JsonValueKind.True, "toggle echoed");
+
+            r = await viewer.ActionAsync(s.Key, "mode", "hold");
+            Assert.True(r.Ok, r.Error);
+            r = await viewer.ActionAsync(s.Key, "mode", "warp");
+            Assert.Contains("not an option", r.Error);
+            r = await viewer.ActionAsync(s.Key, "res", new[] { "ram", "cpu" });
+            Assert.Equal(["cpu", "ram"], r.Result!.Value.EnumerateArray().Select(e => e.GetString()));
+            await Wait.Until(() => viewer.Apps.Single(a => a.App == "PyTest").Values.TryGetValue("mode", out var v) && v.GetString() == "hold", "choice echoed");
+            r = await viewer.RequestAsync("PyTest.who");
+            var who = r.Result!.Value.EnumerateArray().ToList();
+            Assert.StartsWith("monitor (monitor:", who[0].GetString());
+            Assert.Equal("monitor", who[1].GetString());
+            Assert.True(who[2].GetBoolean());
+            Assert.Equal("monitor", who[3].GetString()); // the viewer's default name
 
             r = await viewer.ActionAsync(s.Key, "missing");
             Assert.Contains("missing", r.Error);

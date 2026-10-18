@@ -32,6 +32,13 @@ public abstract class HubConnection : IAsyncDisposable, IDisposable
     private readonly ConcurrentDictionary<string, string?> _provideDescriptions = new(StringComparer.OrdinalIgnoreCase);
     private readonly CancellationTokenSource _stopping = new();
     private readonly string _session = Protocol.NewId();
+    private static readonly AsyncLocal<RequestSender?> _sender = new();
+
+    /// <summary>
+    /// Inside an action or <see cref="Provide(string, Func{JsonElement?, object?}, string?)"/> handler: who sent the
+    /// request being answered, as stamped by the hub. Null outside a handler.
+    /// </summary>
+    public static RequestSender? Sender => _sender.Value;
     private int _started, _disposed;
 
     private protected HubConnection(HubOptions options, string app, string? instance, string? machine, string? version)
@@ -172,6 +179,7 @@ public abstract class HubConnection : IAsyncDisposable, IDisposable
     private async Task AnswerAsync(Message req)
     {
         var resp = new Message { Type = MessageTypes.Response, Corr = req.Id };
+        _sender.Value = new RequestSender(req.Key ?? "", req.Role, req.App, req.Machine); // flows into the handler, not out of this task
         try
         {
             var ct = _stopping.Token;
@@ -219,4 +227,15 @@ public abstract class HubConnection : IAsyncDisposable, IDisposable
     public void Dispose() => DisposeAsync().AsTask().GetAwaiter().GetResult();
 
     private protected virtual Task BeforeStopAsync() => Task.CompletedTask;
+}
+
+/// <summary>Who sent a request, as the hub saw it. The hub stamps this; the sender can't choose its role.</summary>
+/// <param name="Key">The sender's key: an app key like <c>PC/CodeCarver</c>, or <c>monitor:3</c>.</param>
+/// <param name="Role"><c>monitor</c> (someone at a panel, or <c>rmon</c>) or <c>app</c>. Null from a hub older than 1.1.</param>
+/// <param name="App">The sender's app name, e.g. <c>RelentlessMonitor</c>, <c>rmon</c> or <c>CodeCarver</c>.</param>
+/// <param name="Machine">The machine the sender says it runs on.</param>
+public sealed record RequestSender(string Key, string? Role, string? App, string? Machine)
+{
+    public bool IsMonitor => Role == Roles.Monitor;
+    public override string ToString() => App is null ? Key : $"{App} ({Key})";
 }

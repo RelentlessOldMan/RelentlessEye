@@ -35,6 +35,10 @@ internal abstract class WidgetView : StackPanel
     /// <summary>Called when the app goes offline or comes back: controls that act on the app enable/disable.</summary>
     public virtual void SetOnline(bool online) { }
 
+    /// <summary>"Are you sure?" before an action. A dialog in the app; tests swap it out so nothing ever pops up.</summary>
+    internal static Func<FrameworkElement, string, string, bool> Confirm { get; set; } = (owner, text, title)
+        => MessageBox.Show(Window.GetWindow(owner)!, text, title, MessageBoxButton.OKCancel, MessageBoxImage.Question) == MessageBoxResult.OK;
+
     public static WidgetView Create(WidgetDef def, ActionSender send) => def.Kind switch
     {
         WidgetKinds.KeyValue => new KeyValueView(def),
@@ -45,6 +49,8 @@ internal abstract class WidgetView : StackPanel
         WidgetKinds.Feed => new FeedView(def),
         WidgetKinds.Button => new ButtonView(def, send),
         WidgetKinds.Toggle => new ToggleView(def, send),
+        WidgetKinds.Choice => new OptionsView(def, send, many: false),
+        WidgetKinds.Flags => new OptionsView(def, send, many: true),
         _ => new TextView(def), // text, and any kind this monitor doesn't know yet
     };
 
@@ -425,9 +431,7 @@ internal sealed class ButtonView : WidgetView
 
     private async Task ClickAsync()
     {
-        if (!string.IsNullOrEmpty(Def.Confirm)
-            && MessageBox.Show(Window.GetWindow(this)!, Def.Confirm, Def.Label ?? Def.Id, MessageBoxButton.OKCancel, MessageBoxImage.Question) != MessageBoxResult.OK)
-            return;
+        if (!string.IsNullOrEmpty(Def.Confirm) && !Confirm(this, Def.Confirm, Def.Label ?? Def.Id)) return;
         _busy = true; Sync();
         _result.Text = "…";
         _result.Foreground = Palette.Dim;
@@ -487,5 +491,84 @@ internal sealed class ToggleView : WidgetView
             _box.IsEnabled = _online;
             _box.IsChecked = _appValue; // the app decides; it confirms by setting the value
         }
+    }
+}
+
+/// <summary>
+/// Choice (pick one) and flags (any number on): a row of option buttons. The selection shown is always the
+/// app's value; a click sends the wanted value and the app confirms by setting it.
+/// </summary>
+internal sealed class OptionsView : WidgetView
+{
+    private readonly WrapPanel _row = new();
+    private readonly TextBlock _result = Small();
+    private readonly ActionSender _send;
+    private readonly bool _many;
+    private readonly List<(OptionDef Option, Button Button)> _buttons = [];
+    private HashSet<string> _on = new(StringComparer.Ordinal);
+    private bool _online = true, _busy;
+
+    public OptionsView(WidgetDef def, ActionSender send, bool many) : base(def)
+    {
+        _send = send;
+        _many = many;
+        foreach (var o in def.Options ?? [])
+        {
+            var b = new Button { Content = o.Label ?? o.Value, Tag = o.Value, Margin = new Thickness(0, 0, 4, 4), Padding = new Thickness(9, 3, 9, 3) };
+            b.Click += async (_, _) => await PickAsync(o);
+            _buttons.Add((o, b));
+            _row.Children.Add(b);
+        }
+        Children.Add(_row);
+        _result.TextWrapping = TextWrapping.Wrap;
+        Children.Add(_result);
+        Paint();
+    }
+
+    public override void Render(AppState s)
+    {
+        var v = Value(s);
+        _on = new HashSet<string>(StringComparer.Ordinal);
+        if (v is { ValueKind: JsonValueKind.String } one) _on.Add(Str(one));
+        else if (v is { ValueKind: JsonValueKind.Array } arr)
+            foreach (var x in arr.EnumerateArray()) if (x.ValueKind == JsonValueKind.String) _on.Add(Str(x));
+        Paint();
+    }
+
+    public override void SetOnline(bool online) { _online = online; Paint(); }
+
+    private void Paint()
+    {
+        foreach (var (o, b) in _buttons)
+        {
+            bool on = _on.Contains(o.Value);
+            var color = Palette.Brush(o.Color ?? (Def.States?.TryGetValue(o.Value, out var c) == true ? c : null) ?? Def.Color, Palette.Accent);
+            b.Background = on ? color : Palette.Track;
+            b.BorderBrush = on ? color : Palette.Brush("#3a3f4a");
+            b.FontWeight = on ? FontWeights.SemiBold : FontWeights.Normal;
+            b.IsEnabled = _online && !_busy;
+        }
+    }
+
+    private async Task PickAsync(OptionDef o)
+    {
+        if (_busy) return;
+        bool on = _on.Contains(o.Value);
+        if (!_many && on) return; // already the choice
+        var confirm = o.Confirm ?? Def.Confirm;
+        if (!string.IsNullOrEmpty(confirm) && !Confirm(this, confirm, $"{Def.Label ?? Def.Id}: {o.Label ?? o.Value}")) return;
+
+        object wanted = _many
+            ? (Def.Options ?? []).Select(x => x.Value).Where(x => x == o.Value ? !on : _on.Contains(x)).ToArray()
+            : o.Value;
+        _busy = true; Paint();
+        _result.Text = "";
+        try
+        {
+            var r = await _send(Def.Id, wanted);
+            if (!r.Ok) { _result.Text = r.Error; _result.Foreground = Palette.Brush("error"); }
+        }
+        catch (Exception ex) { _result.Text = ex.Message; _result.Foreground = Palette.Brush("error"); } // async void: must not escape
+        finally { _busy = false; Paint(); }
     }
 }

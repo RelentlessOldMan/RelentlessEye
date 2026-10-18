@@ -27,16 +27,22 @@ await using var mon = new MonitorClient("ExampleApp", l => l
     .Section("Controls", s => s
         .Button("restart", "Restart job")
         .Button("fail", "Simulate failure", confirm: "Make the job fail?", color: "red")
-        .Toggle("paused", "Paused"), columns: 3),
+        .Toggle("paused", "Paused")
+        .Choice("speed", "Speed", ["slow", "normal", new RelentlessMonitor.Wire.OptionDef { Value = "fast", Color = "orange", Confirm = "Run flat out?" }], span: 2)
+        .Flags("verbose", "Log extra", "timings", "memory"), columns: 3),
     new MonitorClientOptions { Hub = hub, Token = token, Instance = Environment.ProcessId.ToString() });
 
-// 2. Handle the panel's buttons and toggles.
+// 2. Handle the panel's buttons, toggles, choices and flags.
 bool paused = false;
 int restarts = 0;
 var failNow = false;
 mon.OnAction("restart", () => { Interlocked.Increment(ref restarts); mon.Log("log", "restart requested from the monitor", "warn"); });
 mon.OnAction("fail", () => { failNow = true; });
 mon.OnToggle("paused", on => { paused = on; mon.Log("log", on ? "paused" : "resumed"); });
+mon.OnChoice("speed", v => mon.Log("log", $"speed set to {v} by {MonitorClient.Sender}"));
+mon.OnFlags("verbose", on => mon.Log("log", on.Count == 0 ? "no extra logging" : "extra logging: " + string.Join(", ", on)));
+mon.Set("speed", "normal");
+mon.Set("verbose", Array.Empty<string>());
 
 // 3. Answer requests from other apps or tools: `rmon request ExampleApp.status`.
 double pct = 0;

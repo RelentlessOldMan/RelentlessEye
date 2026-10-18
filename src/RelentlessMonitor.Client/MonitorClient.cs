@@ -169,6 +169,48 @@ public sealed class MonitorClient : HubConnection
             return Task.FromResult<object?>(on);
         });
 
+    /// <summary>
+    /// A choice: runs <paramref name="handler"/> with the picked option, then shows it. A value that isn't
+    /// one of the widget's options is refused before the handler runs.
+    /// </summary>
+    public void OnChoice(string widgetId, Action<string> handler)
+        => OnAction(widgetId, (v, _) =>
+        {
+            var picked = v is { ValueKind: JsonValueKind.String } s ? s.GetString() : null;
+            var options = OptionValues(widgetId);
+            if (picked is null || (options is not null && !options.Contains(picked)))
+                throw new ArgumentException($"'{(v is { } e ? e.GetRawText() : "nothing")}' is not an option of {widgetId}");
+            handler(picked);
+            Set(widgetId, picked);
+            return Task.FromResult<object?>(picked);
+        });
+
+    /// <summary>
+    /// Flags: runs <paramref name="handler"/> with every option that should now be on, then shows that.
+    /// Unknown options are refused before the handler runs; duplicates are dropped.
+    /// </summary>
+    public void OnFlags(string widgetId, Action<IReadOnlyList<string>> handler)
+        => OnAction(widgetId, (v, _) =>
+        {
+            if (v is not { ValueKind: JsonValueKind.Array } arr || arr.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String))
+                throw new ArgumentException($"{widgetId} wants an array of option names");
+            var options = OptionValues(widgetId);
+            var on = arr.EnumerateArray().Select(x => x.GetString()!).Distinct(StringComparer.Ordinal).ToList();
+            if (options is not null && on.FirstOrDefault(o => !options.Contains(o)) is { } bad)
+                throw new ArgumentException($"'{bad}' is not an option of {widgetId}");
+            if (options is not null) on = options.Where(on.Contains).ToList(); // layout order
+            handler(on);
+            Set(widgetId, on);
+            return Task.FromResult<object?>(on);
+        });
+
+    /// <summary>The option values the layout gives a widget, or null when it gives none (anything goes).</summary>
+    private List<string>? OptionValues(string widgetId)
+    {
+        lock (_lock)
+            return _widgets.TryGetValue(widgetId, out var w) && w.Options is { Count: > 0 } o ? o.Select(x => x.Value).ToList() : null;
+    }
+
     /// <summary>Waits until everything set so far has been written to the hub. False on timeout or no hub.</summary>
     public async Task<bool> FlushAsync(TimeSpan timeout)
     {

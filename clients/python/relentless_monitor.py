@@ -33,8 +33,9 @@ import uuid
 from datetime import datetime, timezone
 
 __all__ = [
-    "MonitorClient", "Response",
+    "MonitorClient", "Response", "Sender",
     "layout", "section", "text", "kv", "indicator", "progress", "gauge", "chart", "feed", "button", "toggle",
+    "choice", "flags", "option",
 ]
 
 PROTOCOL_VERSION = 1
@@ -118,7 +119,53 @@ def toggle(id, label):
     return _widget("toggle", id, label)
 
 
+def option(value, label=None, color=None, confirm=None):
+    """One option of a choice or flags widget, when it needs a label, color or "are you sure?"."""
+    return _widget_opts({"value": value}, label=label, color=color, confirm=confirm)
+
+
+def _widget_opts(d, **opts):
+    d.update({k: v for k, v in opts.items() if v is not None})
+    return d
+
+
+def choice(id, label, options, states=None, confirm=None, color=None, span=None):
+    """
+    Value: one of `options` (strings, or option(...)), shown highlighted. Picking one calls the
+    on_action handler with it. `states` colors options ({"hold": "red"}); `confirm` asks first.
+    """
+    return _widget("choice", id, label, options=list(options), states=states, confirm=confirm, color=color, span=span)
+
+
+def flags(id, label, options, color=None, span=None):
+    """Value: a list of the `options` that are on. Clicking one calls the on_action handler with the new list."""
+    return _widget("flags", id, label, options=list(options), color=color, span=span)
+
+
+def _option_values(widget):
+    opts = (widget or {}).get("options") or []
+    vals = [o.get("value") if isinstance(o, dict) else o for o in opts]
+    return [v for v in vals if isinstance(v, str) and v] or None
+
+
 # ---------------------------------------------------------------- client
+
+class Sender:
+    """Who sent the request a handler is answering, as stamped by the hub (see MonitorClient.sender)."""
+
+    __slots__ = ("key", "role", "app", "machine")
+
+    def __init__(self, key, role=None, app=None, machine=None):
+        self.key, self.role, self.app, self.machine = key, role, app, machine
+
+    @property
+    def is_monitor(self):
+        """True for a person at a panel (or rmon); False for another app."""
+        return self.role == "monitor"
+
+    def __repr__(self):
+        return "%s (%s)" % (self.app, self.key) if self.app else str(self.key)
+
 
 class Response:
     """Answer to request(). Never raised: failures are ok=False with error set."""
@@ -182,6 +229,7 @@ class MonitorClient:
         self._live = False          # True from the replay snapshot until the connection drops
         self._out = []              # other messages to write (responses, requests)
         self._actions = {}
+        self._handling = threading.local()
         self._provides = {}         # name -> (handler, description)
         self._pending = {}          # request id -> [Event, Response]
         self._sock = None
@@ -292,6 +340,37 @@ class MonitorClient:
             self.set(widget_id, on)
             return on
         self._actions[widget_id] = run
+
+    def on_choice(self, widget_id, handler):
+        """handler(str) runs with the picked option, then the choice shows it. Non-options are refused first."""
+        def run(value):
+            options = _option_values(self._widgets.get(widget_id))
+            if not isinstance(value, str) or (options and value not in options):
+                raise ValueError("%r is not an option of %s" % (value, widget_id))
+            handler(value)
+            self.set(widget_id, value)
+            return value
+        self._actions[widget_id] = run
+
+    def on_flags(self, widget_id, handler):
+        """handler(list) runs with every option that should now be on, then the flags show that."""
+        def run(value):
+            if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+                raise ValueError("%s wants a list of option names" % widget_id)
+            options = _option_values(self._widgets.get(widget_id))
+            for v in value:
+                if options and v not in options:
+                    raise ValueError("%r is not an option of %s" % (v, widget_id))
+            on = [o for o in options if o in value] if options else list(dict.fromkeys(value))
+            handler(on)
+            self.set(widget_id, on)
+            return on
+        self._actions[widget_id] = run
+
+    @property
+    def sender(self):
+        """Inside an action or provide handler: the Sender of the request being answered, else None."""
+        return getattr(self._handling, "sender", None)
 
     def provide(self, name, handler, description=None):
         """handler(args) answers requests named `name` (callers may write App.name). Declare before start()."""
@@ -582,6 +661,8 @@ class MonitorClient:
 
     def _answer(self, req):
         resp = {"type": "response", "corr": req.get("id")}
+        key = req.get("key")
+        self._handling.sender = Sender(key if isinstance(key, str) else "", req.get("role"), req.get("app"), req.get("machine"))
         try:
             name = req.get("name") or ""
             args = req.get("args")

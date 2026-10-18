@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace RelentlessMonitor.Wire;
@@ -29,6 +30,8 @@ public sealed class LayoutDef
                 Id = w.Id, Kind = string.IsNullOrEmpty(w.Kind) ? WidgetKinds.Text : w.Kind, Label = w.Label,
                 States = w.States?.Where(kv => kv.Value is not null).ToDictionary(kv => kv.Key, kv => kv.Value),
                 Min = Finite(w.Min), Max = Finite(w.Max), Unit = w.Unit, Limit = w.Limit, Span = w.Span, Color = w.Color, Confirm = w.Confirm,
+                Options = w.Options?.Where(o => o is not null && !string.IsNullOrEmpty(o.Value))
+                    .Select(o => new OptionDef { Value = o.Value, Label = o.Label, Color = o.Color, Confirm = o.Confirm }).ToList(),
             }).ToList(),
         }).ToList(),
     };
@@ -66,8 +69,65 @@ public sealed class WidgetDef
     public int? Span { get; set; }
     /// <summary>Accent color for chart line, gauge, button.</summary>
     public string? Color { get; set; }
-    /// <summary>Button: ask "are you sure?" before sending the action.</summary>
+    /// <summary>Button, choice: ask "are you sure?" before sending the action.</summary>
     public string? Confirm { get; set; }
+    /// <summary>Choice, flags: what can be picked. On the wire each is a plain string, or an object with a label, color or confirm.</summary>
+    public List<OptionDef>? Options { get; set; }
+}
+
+/// <summary>One pickable option of a choice or flags widget. <see cref="Value"/> is what the action carries.</summary>
+[JsonConverter(typeof(OptionDefConverter))]
+public sealed class OptionDef
+{
+    public string Value { get; set; } = "";
+    /// <summary>Shown instead of <see cref="Value"/>.</summary>
+    public string? Label { get; set; }
+    /// <summary>Its color when selected; else the widget's <see cref="WidgetDef.States"/> entry for it, else the widget color.</summary>
+    public string? Color { get; set; }
+    /// <summary>Ask "are you sure?" before picking this one (overrides the widget's <see cref="WidgetDef.Confirm"/>).</summary>
+    public string? Confirm { get; set; }
+
+    public static implicit operator OptionDef(string value) => new() { Value = value };
+}
+
+/// <summary>Reads an option from a string or an object; writes a bare string when there's nothing but the value.</summary>
+public sealed class OptionDefConverter : JsonConverter<OptionDef>
+{
+    public override OptionDef? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        switch (reader.TokenType)
+        {
+            case JsonTokenType.String: return new OptionDef { Value = reader.GetString() ?? "" };
+            case JsonTokenType.Number or JsonTokenType.True or JsonTokenType.False:
+                using (var doc = JsonDocument.ParseValue(ref reader)) return new OptionDef { Value = doc.RootElement.GetRawText() };
+            case JsonTokenType.StartObject:
+                using (var doc = JsonDocument.ParseValue(ref reader))
+                {
+                    string? Get(string name)
+                    {
+                        foreach (var p in doc.RootElement.EnumerateObject())
+                            if (string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))
+                                return p.Value.ValueKind == JsonValueKind.String ? p.Value.GetString() : p.Value.ValueKind is JsonValueKind.Null ? null : p.Value.GetRawText();
+                        return null;
+                    }
+                    return new OptionDef { Value = Get("value") ?? "", Label = Get("label"), Color = Get("color"), Confirm = Get("confirm") };
+                }
+            default:
+                reader.Skip(); // null or anything odd: an option with no value, which Clean drops
+                return null;
+        }
+    }
+
+    public override void Write(Utf8JsonWriter writer, OptionDef value, JsonSerializerOptions options)
+    {
+        if (value.Label is null && value.Color is null && value.Confirm is null) { writer.WriteStringValue(value.Value); return; }
+        writer.WriteStartObject();
+        writer.WriteString("value", value.Value);
+        if (value.Label is not null) writer.WriteString("label", value.Label);
+        if (value.Color is not null) writer.WriteString("color", value.Color);
+        if (value.Confirm is not null) writer.WriteString("confirm", value.Confirm);
+        writer.WriteEndObject();
+    }
 }
 
 /// <summary>
@@ -93,6 +153,10 @@ public static class WidgetKinds
     public const string Button = "button";
     /// <summary>Value: bool. Flipping it sends an action with the new value; the app confirms by updating.</summary>
     public const string Toggle = "toggle";
+    /// <summary>Value: one of <see cref="WidgetDef.Options"/>, shown highlighted. Picking one sends an action with it; the app confirms by updating.</summary>
+    public const string Choice = "choice";
+    /// <summary>Value: array of the <see cref="WidgetDef.Options"/> that are on. Clicking one sends an action with the whole new array; the app confirms by updating.</summary>
+    public const string Flags = "flags";
 
     /// <summary>Kinds whose values append (and are retained as history) rather than replace.</summary>
     public static bool IsStream(string kind) => kind is Chart or Feed;
@@ -147,6 +211,20 @@ public sealed class SectionBuilder(SectionDef section)
 
     public SectionBuilder Toggle(string id, string label)
         => Add(new() { Id = id, Kind = WidgetKinds.Toggle, Label = label });
+
+    /// <summary>Pick one of <paramref name="options"/> (strings, or <see cref="OptionDef"/> for a label, color or confirm).</summary>
+    public SectionBuilder Choice(string id, string? label, IEnumerable<OptionDef> options, string? confirm = null, string? color = null, int? span = null)
+        => Add(new() { Id = id, Kind = WidgetKinds.Choice, Label = label, Options = options.ToList(), Confirm = confirm, Color = color, Span = span });
+
+    public SectionBuilder Choice(string id, string? label, params string[] options)
+        => Choice(id, label, options.Select(o => (OptionDef)o));
+
+    /// <summary>Switch any of <paramref name="options"/> on or off.</summary>
+    public SectionBuilder Flags(string id, string? label, IEnumerable<OptionDef> options, string? color = null, int? span = null)
+        => Add(new() { Id = id, Kind = WidgetKinds.Flags, Label = label, Options = options.ToList(), Color = color, Span = span });
+
+    public SectionBuilder Flags(string id, string? label, params string[] options)
+        => Flags(id, label, options.Select(o => (OptionDef)o));
 
     /// <summary>Anything not covered above.</summary>
     public SectionBuilder Widget(WidgetDef w) => Add(w);
