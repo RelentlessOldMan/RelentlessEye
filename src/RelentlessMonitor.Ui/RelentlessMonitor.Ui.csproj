@@ -4,9 +4,13 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <AssemblyName>RelentlessMonitor</AssemblyName>
+    <ApplicationIcon>..\..\assets\RelentlessMonitor.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RelentlessMonitor.Client\RelentlessMonitor.Client.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="..\..\assets\RelentlessMonitor.ico" Link="RelentlessMonitor.ico" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="RelentlessMonitor.Tests" />

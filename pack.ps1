@@ -1,5 +1,5 @@
 # Builds the RelentlessMonitor.Client NuGet package into .\packages (this repo's own local feed).
-#   .\pack.ps1                 -> version from Directory.Build.props (1.0.0)
+#   .\pack.ps1                 -> version from Directory.Build.props (VersionPrefix)
 #   .\pack.ps1 -Version 1.0.1  -> bump it; NuGet caches a version forever, so bump when you change the client
 # Consuming apps: dotnet add package RelentlessMonitor.Client -s C:\Playground\RelentlessMonitor\packages
 param([string]$Version)

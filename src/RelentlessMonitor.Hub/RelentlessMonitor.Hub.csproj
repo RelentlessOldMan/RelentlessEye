@@ -4,6 +4,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <AssemblyName>RelentlessMonitor.Hub</AssemblyName>
+    <ApplicationIcon>..\..\assets\RelentlessMonitor.ico</ApplicationIcon>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>

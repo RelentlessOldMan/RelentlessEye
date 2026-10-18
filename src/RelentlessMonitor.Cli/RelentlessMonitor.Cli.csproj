@@ -3,6 +3,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <AssemblyName>rmon</AssemblyName>
+    <ApplicationIcon>..\..\assets\RelentlessMonitor.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\RelentlessMonitor.Client\RelentlessMonitor.Client.csproj" />
