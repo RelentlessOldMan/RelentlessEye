@@ -28,6 +28,8 @@ public partial class MainWindow : Window
 
     private readonly string _settingsPath = MonitorSettings.DefaultPath;
     private readonly MonitorSettings _settings;
+    // --hub / --token from the command line: used for this run only, never saved over the settings.
+    private string? _hubArg, _tokenArg;
     private readonly Dictionary<string, Entry> _entries = new(StringComparer.Ordinal);
     private readonly DispatcherTimer _drain;
     private readonly DispatcherTimer _clock;
@@ -46,7 +48,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = MonitorSettings.Load(_settingsPath);
-        ApplyCommandLine(_settings);
+        ApplyCommandLine();
         if (_settings.Width is > 300) Width = _settings.Width.Value;
         if (_settings.Height is > 200) Height = _settings.Height.Value;
 
@@ -64,15 +66,18 @@ public partial class MainWindow : Window
     }
 
     /// <summary><c>--hub host[:port]</c> and <c>--token X</c> override the saved settings for this run.</summary>
-    private static void ApplyCommandLine(MonitorSettings s)
+    private void ApplyCommandLine()
     {
         var args = Environment.GetCommandLineArgs();
         for (int i = 1; i + 1 < args.Length; i++)
         {
-            if (args[i] == "--hub") s.Hub = args[++i];
-            else if (args[i] == "--token") s.Token = args[++i];
+            if (args[i] == "--hub") _hubArg = args[++i];
+            else if (args[i] == "--token") _tokenArg = args[++i];
         }
     }
+
+    private string? HubSetting => _hubArg ?? _settings.Hub;
+    private string? TokenSetting => _tokenArg ?? _settings.Token;
 
     // ---- hub connection ----
 
@@ -86,8 +91,8 @@ public partial class MainWindow : Window
 
         var v = new MonitorViewer(new HubOptions
         {
-            Hub = string.IsNullOrWhiteSpace(_settings.Hub) ? null : _settings.Hub.Trim(),
-            Token = string.IsNullOrWhiteSpace(_settings.Token) ? null : _settings.Token.Trim(),
+            Hub = string.IsNullOrWhiteSpace(HubSetting) ? null : HubSetting.Trim(),
+            Token = string.IsNullOrWhiteSpace(TokenSetting) ? null : TokenSetting.Trim(),
             RetryInterval = TimeSpan.FromSeconds(2),
         }, "RelentlessMonitor");
         // A replaced viewer can still be delivering its last events; only the current one's count.
@@ -117,9 +122,9 @@ public partial class MainWindow : Window
         lock (_inLock) { _incoming[s.Key] = s; _wentOffline.Remove(s.Key); }
     }
 
-    private string HubName => string.IsNullOrWhiteSpace(_settings.Hub)
+    private string HubName => string.IsNullOrWhiteSpace(HubSetting)
         ? Environment.GetEnvironmentVariable(Protocol.HubEnvVar) is { Length: > 0 } env ? env : $"this machine (port {Protocol.DefaultPort})"
-        : _settings.Hub!;
+        : HubSetting!;
 
     private void SetHub(bool up)
     {
@@ -138,8 +143,8 @@ public partial class MainWindow : Window
 
     private void SettingsButton_Click(object sender, RoutedEventArgs e)
     {
-        HubBox.Text = _settings.Hub ?? "";
-        TokenBox.Password = _settings.Token ?? "";
+        HubBox.Text = HubSetting ?? "";
+        TokenBox.Password = TokenSetting ?? "";
         SettingsPanel.Visibility = SettingsPanel.Visibility == Visibility.Visible ? Visibility.Collapsed : Visibility.Visible;
         if (SettingsPanel.Visibility == Visibility.Visible) HubBox.Focus();
     }
@@ -148,6 +153,7 @@ public partial class MainWindow : Window
     {
         _settings.Hub = HubBox.Text.Trim();
         _settings.Token = TokenBox.Password.Trim();
+        _hubArg = _tokenArg = null;   // chosen here, so it's saved and replaces any command-line override
         _settings.Save(_settingsPath);
         SettingsPanel.Visibility = Visibility.Collapsed;
         Connect();
