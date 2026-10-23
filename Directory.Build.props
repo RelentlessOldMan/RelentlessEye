@@ -3,7 +3,7 @@
     <Company>RelentlessOldMan</Company>
     <Authors>RelentlessOldMan</Authors>
     <Product>RelentlessEye</Product>
-    <VersionPrefix>1.2.0</VersionPrefix>
+    <VersionPrefix>1.2.1</VersionPrefix>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

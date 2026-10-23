@@ -62,7 +62,7 @@ public partial class MainWindow : Window
         var (startWidth, startHeight) = (Width, Height);
 
         _drain = new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background, (_, _) => Drain(), Dispatcher);
-        _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => UpdateHeader(), Dispatcher);
+        _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background, (_, _) => { UpdateHeader(); StartLocalHub(); }, Dispatcher);
         Loaded += (_, _) => { Connect(); _drain.Start(); _clock.Start(); };
         Closing += async (_, _) =>
         {
@@ -122,6 +122,7 @@ public partial class MainWindow : Window
         };
         v.ConnectionChanged += up => Dispatcher.BeginInvoke(() => { if (_viewer == v) SetHub(up); });
         _viewer = v;
+        _connectedAt = DateTime.UtcNow;
         SetHub(false);
         v.Start();
     }
@@ -170,6 +171,37 @@ public partial class MainWindow : Window
     }
 
     private static string LocalHub => $"localhost:{Protocol.DefaultPort}";
+
+    private DateTime _connectedAt, _hubStartedAt = DateTime.MinValue;
+
+    /// <summary>
+    /// Each clock tick: a hub on this machine that hasn't answered for 3s gets started from next to
+    /// this exe, at most every 30s. A second hub on a taken port exits by itself, so racing another
+    /// monitor (or the login shortcut) is harmless.
+    /// </summary>
+    private void StartLocalHub()
+    {
+        var now = DateTime.UtcNow;
+        if (_hubUp || _viewer is not { LastRejection: null } || now - _connectedAt < TimeSpan.FromSeconds(3)
+            || now - _hubStartedAt < TimeSpan.FromSeconds(30)) return;
+        if (HubStart(EffectiveHub, AppContext.BaseDirectory) is not { } psi) return;
+        _hubStartedAt = now;
+        try { System.Diagnostics.Process.Start(psi)?.Dispose(); }
+        catch (Exception) { return; } // blocked or gone: stay "not reachable"
+        HubText.Text = $"starting the hub on this machine (port {Protocol.ResolveHub(EffectiveHub).Port})…";
+    }
+
+    /// <summary>How to start the hub for <paramref name="hub"/>, or null when it isn't this machine's to start.</summary>
+    internal static System.Diagnostics.ProcessStartInfo? HubStart(string hub, string dir)
+    {
+        if (!IsThisMachine(hub)) return null;
+        var exe = System.IO.Path.Combine(dir, "RelentlessEye.Hub.exe");
+        if (!System.IO.File.Exists(exe)) return null;
+        var psi = new System.Diagnostics.ProcessStartInfo(exe) { UseShellExecute = false, CreateNoWindow = true, WorkingDirectory = dir };
+        psi.ArgumentList.Add("--port");
+        psi.ArgumentList.Add(Protocol.ResolveHub(hub).Port.ToString());
+        return psi;
+    }
 
     /// <summary>Whether <paramref name="hub"/> (host[:port]) is this machine, where no token is needed.</summary>
     internal static bool IsThisMachine(string hub)
@@ -415,7 +447,9 @@ public partial class MainWindow : Window
         if (_entries.Count > 0 && Selected is not null) { EmptyText.Visibility = Visibility.Collapsed; return; }
         EmptyText.Visibility = Visibility.Visible;
         EmptyText.Text = !_hubUp
-            ? "Waiting for the hub.\n\nStart RelentlessEye.Hub on this machine, or point Hub settings at another one."
+            ? IsThisMachine(EffectiveHub)
+                ? "Waiting for the hub.\n\nThe monitor starts RelentlessEye.Hub on this machine when it is next to this exe, or point Hub settings at another one."
+                : "Waiting for the hub.\n\nStart RelentlessEye.Hub on that machine, or point Hub settings at another one."
             : _entries.Count == 0
                 ? "Connected. No apps yet.\n\nApps appear here when they connect with the RelentlessEye client."
                 : "Pick an app.";

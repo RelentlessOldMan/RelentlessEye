@@ -360,6 +360,24 @@ public class HardeningTests
         Assert.Matches(@"^\d+\.\d+\.\d+(-[\w.]+)?$", RelentlessEye.Ui.MainWindow.AppVersion);
 
     [Fact]
+    public void The_monitor_starts_only_a_hub_on_this_machine_that_sits_next_to_it()
+    {
+        var dir = Directory.CreateTempSubdirectory("reye-hubstart").FullName;
+        try
+        {
+            Assert.Null(RelentlessEye.Ui.MainWindow.HubStart("", dir)); // no hub exe here
+            File.WriteAllText(Path.Combine(dir, "RelentlessEye.Hub.exe"), ""); // never run: only looked at
+            var psi = RelentlessEye.Ui.MainWindow.HubStart("127.0.0.1:47801", dir)!;
+            Assert.Equal(Path.Combine(dir, "RelentlessEye.Hub.exe"), psi.FileName);
+            Assert.Equal(["--port", "47801"], psi.ArgumentList);
+            Assert.True(psi.CreateNoWindow);
+            Assert.Equal(["--port", "47800"], RelentlessEye.Ui.MainWindow.HubStart("", dir)!.ArgumentList);
+            Assert.Null(RelentlessEye.Ui.MainWindow.HubStart("devbox:47800", dir)); // not ours to start
+        }
+        finally { Directory.Delete(dir, true); }
+    }
+
+    [Fact]
     public void This_machine_by_name_needs_no_token() =>
         Assert.True(RelentlessEye.Ui.MainWindow.IsThisMachine(Environment.MachineName + ":47800"));
 

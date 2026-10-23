@@ -24,6 +24,10 @@ dist\RelentlessEye.exe           # the monitor
 dist\reye.exe apps               # what's connected
 ```
 
+The monitor starts the hub next to it when its hub is this machine and nothing answers. To have the
+hub up for apps before any monitor opens, put a shortcut to `RelentlessEye.Hub.exe` in
+`shell:startup`.
+
 **Hub settings** are in `%LOCALAPPDATA%\RelentlessEye\hub.json`:
 
 - `port` (default 47800).
